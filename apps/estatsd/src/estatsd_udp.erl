@@ -27,11 +27,9 @@ start_link() ->
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
--record(state, {port          :: non_neg_integer(),
-                socket        :: inet:socket(),
-                batch = []    :: [binary()],
-                batch_max     :: non_neg_integer(),
-                batch_max_age :: non_neg_integer()
+-record(state, {port                  :: non_neg_integer(),
+                socket                :: inet:socket(),
+                batch = dict:new()    :: dict()
                }).
 
 init([]) ->
@@ -45,10 +43,8 @@ init([]) ->
                           [BatchMax, BatchAge]),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once},
                                        {recbuf, RecBuf}]),
-    {ok, #state{port = Port, socket = Socket,
-                batch = [],
-                batch_max = BatchMax,
-                batch_max_age = BatchAge}}.
+    timer:send_interval(BatchAge, dump_stats),
+    {ok, #state{port = Port, socket = Socket}}.
 
 handle_call(_Request, _From, State) ->
     {noreply, ok, State}.
@@ -57,20 +53,24 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 
-handle_info({udp, Socket, _Host, _Port, Bin},
-            #state{batch=Batch, batch_max=Max}=State) when length(Batch) == Max ->
-    error_logger:info_msg("spawn batch ~p FULL~n", [Max]),
-    start_batch_worker(Batch),
+handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch}=State) ->
     inet:setopts(Socket, [{active, once}]),
-    {noreply, State#state{batch=[Bin]}};
-handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch,
-                                                     batch_max_age=MaxAge}=State) ->
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, State#state{batch=[Bin|Batch]}, MaxAge};
-handle_info(timeout, #state{batch=Batch}=State) ->
-    error_logger:info_msg("spawn batch ~p TIMEOUT~n", [length(Batch)]),
-    start_batch_worker(Batch),
-    {noreply, State#state{batch=[]}};
+    case parse_packet(Bin) of
+        skip ->
+            {noreply, State};
+        {Name, Type, Stat} ->
+            Batch1 = store_stat(Batch, Name, Type, Stat),
+            {noreply, State#state{batch=Batch1}}
+    end;
+handle_info(dump_stats, #state{batch=Batch}=State) ->
+    case dict:size(Batch) of
+        0 ->
+            {noreply, State};
+        _ ->
+            error_logger:info_msg("spawn batch ~p TIMEOUT~n", [dict:size(Batch)]),
+            start_batch_worker(Batch),
+            {noreply, State#state{batch=dict:new()}}
+    end;
 handle_info(_Msg, State) ->
     {noreply, State}.
 
@@ -85,15 +85,47 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 start_batch_worker(Batch) ->
     %% Make sure we process messages in the order received
-    proc_lib:spawn(fun() -> handle_messages(lists:reverse(Batch)) end).
+    proc_lib:spawn(fun() -> handle_messages(dict:to_list(Batch), 0) end).
 
-handle_messages(Batch) ->
-    [ handle_message(M) || M <- Batch ],
-    ok.
-handle_message(Bin) ->
-    Lines = binary:split(Bin, <<"\n">>, [global]),
-    [ parse_line(L) || L <- Lines ],
-    ok.
+handle_messages([], Count) ->
+    io:format("Sent ~p messages for batch~n", [Count]),
+    ok;
+handle_messages([{{Name, _Type}, Values}|T], Count) ->
+    folsom_metrics:notify({Name, Values}),
+    handle_messages(T, Count + 1).
+
+parse_packet(<<>>) ->
+    skip;
+parse_packet(Bin) ->
+    case binary:split(Bin, [<<":">>, <<"|">>], [global]) of
+        [Key, Value, Type] ->
+            {ok, _} = estatsd_folsom:ensure_metric(Key, Type),
+            {Key, Type, convert_value(Type, Value)};
+        _ ->
+            skip
+    end.
+
+store_stat(Batch, Name, Type, Stat) ->
+    Key = {Name, Type},
+    case dict:find(Key, Batch) of
+        error ->
+            dict:store(Key, [Stat], Batch);
+        {ok, Stat0} ->
+            dict:store(Key, [Stat|Stat0], Batch)
+    end.
+
+convert_value(<<"e">>, Value) ->
+    Value;
+convert_value(Type, Value) ->
+    Value1 = ?to_int(Value),
+    case Type of
+        <<"d">> ->
+            {dec, Value1};
+        <<"c">> ->
+            {inc, Value1};
+        _ ->
+            Value1
+    end.
 
 parse_line(<<>>) ->
     skip;

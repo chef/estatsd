@@ -29,7 +29,7 @@ start_link() ->
 
 ensure_metric(Key, Type) ->
     {Table, Fun} = table_for_type(Type),
-    gen_server:call(?SERVER, {ensure_metric, Key, Type, Table, Fun}).
+    gen_server:call(?SERVER, {ensure_metric, Key, Type, Table, Fun}, infinity).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -45,8 +45,8 @@ handle_call({ensure_metric, Key, Type, Table, Fun}, _From, State) ->
                  false ->
                      folsom_metrics:Fun(Key),
                      ets:insert(?ALL_METRICS, {{Key, Table}, true}),
-                     error_logger:info_msg("created|~p|~p|~p~n",
-                                           [{Key, Table}, Fun, Type]),
+                     %%error_logger:info_msg("created|~p|~p|~p~n",
+                     %%                      [{Key, Table}, Fun, Type]),
                     created
             end,
     {reply, {ok, Status}, State};
