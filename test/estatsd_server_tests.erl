@@ -7,19 +7,21 @@ setup_server() ->
     UdpMaxBatchSize = 1,
     UdpMaxBatchAge = 1000,
     UdpBuf = 524288,
-    EstatsdPort = 3344,
     {ok, _} = capture_tcp:start_link(0),
     {ok, CapturePort} = capture_tcp:what_port(),
     application:set_env(estatsd, flush_interval, 2000),
     application:set_env(estatsd, graphite_host, "127.0.0.1"),
     application:set_env(estatsd, graphite_port, CapturePort),
-    application:set_env(estatsd, udp_listen_port, EstatsdPort),
+    application:set_env(estatsd, udp_listen_port, 0),
     application:set_env(estatsd, udp_recbuf, UdpBuf),
     application:set_env(estatsd, udp_max_batch_size, UdpMaxBatchSize),
     application:set_env(estatsd, udp_max_batch_age, UdpMaxBatchAge),
     application:start(crypto),
     application:start(inets),
-    application:start(estatsd).
+    application:start(estatsd),
+    {ok, EstatsdPort} = estatsd_udp:what_port(),
+    ?debugVal(EstatsdPort),
+    EstatsdPort.
 
 cleanup_server() ->
     capture_tcp:stop(),
@@ -31,9 +33,9 @@ estatsd_sanity_test_() ->
              setup_server() end,
      fun(_) ->
              cleanup_server() end,
+     fun(Port) ->
      [{"UDP metrics sent to estatsd are buffered and then sent to graphite",
        fun() ->
-               Port = 3344,
                {ok, S} = gen_udp:open(0),
                ok = gen_udp:send(S, "127.0.0.1", Port, <<"mycounter:10|c">>),
                ok = gen_udp:send(S, "127.0.0.1", Port, <<"mycounter:10|c">>),
@@ -48,7 +50,8 @@ estatsd_sanity_test_() ->
                %% MyCounter = folsom_metrics:get_metric_value(<<"mycounter">>),
                %% ?debugVal(MyCounter),
                ok
-       end}]}.
+       end}]
+     end}.
 
 multi() ->
     Port = 3344,
