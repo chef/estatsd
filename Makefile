@@ -1,12 +1,7 @@
-DEPS = deps/folsom deps/ibrowse deps/mochiweb deps/webmachine
-
 all: compile
 
-compile: $(DEPS)
+compile:
 	@./rebar compile
-
-$(DEPS):
-	@./rebar get-deps
 
 clean:
 	@./rebar skip_deps=true clean
@@ -18,7 +13,6 @@ relclean:
 	@rm -rf rel/estatsd
 
 distclean: clean relclean
-	@rm -rf deps
 
 rel: compile rel/estatsd
 

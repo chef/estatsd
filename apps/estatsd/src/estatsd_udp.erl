@@ -126,9 +126,6 @@ parse_line(Bin) ->
     send_metric(Type, Key, Value).
 
 send_metric(Type, Key, Value) ->
-    FolsomKey = folsom_key_name(Type, Key),
-    {ok, Status} = estatsd_folsom:ensure_metric(FolsomKey, Type),
-    send_folsom_metric(Status, Type, FolsomKey, Value),
     send_estatsd_metric(Type, Key, Value).
 
 send_estatsd_metric(Type, Key, Value)
@@ -141,30 +138,9 @@ send_estatsd_metric(_Type, _Key, _Value) ->
     % if it isn't one of the above types, we ignore the request.
     ignored.
 
-send_folsom_metric(blacklisted, _, _, _) ->
-    skipped;
-send_folsom_metric({ok, _}, Type, Key, Value)
-  when Type =:= <<"c">> orelse Type =:= <<"m">> ->
-    % TODO: avoid event handler, go direct to folsom
-    folsom_metrics_meter:mark(Key, convert_value(Type, Value));
-send_folsom_metric({ok, _}, Type, Key, Value)
-  when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
-    folsom_metrics_histogram:update(Key, convert_value(Type, Value));
-send_folsom_metric({ok, _}, Type = <<"mr">>, Key, Value) ->
-    folsom_metrics_meter_reader:mark(Key, convert_value(Type, Value));
-send_folsom_metric({ok, _}, Type, Key, Value) ->
-    folsom_metrics:notify({Key, convert_value(Type, Value)}).
-
 convert_value(<<"e">>, Value) ->
     Value;
 convert_value(_Type, Value) when is_binary(Value) ->
     ?to_int(Value);
 convert_value(_Type, Value) when is_integer(Value) ->
     Value.
-
-folsom_key_name(Type, Key) when Type =:= <<"m">> orelse Type =:= <<"c">> ->
-    iolist_to_binary([<<"stats.">>, Key]);
-folsom_key_name(Type, Key) when Type =:= <<"h">> orelse Type =:= <<"ms">> ->
-    iolist_to_binary([<<"stats.timers.">>, Key]);
-folsom_key_name(_Type, Key) ->
-    Key.
