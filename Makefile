@@ -1,13 +1,13 @@
 all: compile
 
 compile:
-	@./rebar compile
+	@rebar compile
 
 clean:
-	@./rebar skip_deps=true clean
+	@rebar skip_deps=true clean
 
 depclean:
-	@./rebar clean
+	@rebar clean
 
 relclean:
 	@rm -rf rel/estatsd
@@ -21,6 +21,6 @@ devrel: rel
 	@rm -rf rel/estatsd/lib/estatsd-*;ln -s $(abspath apps/estatsd) rel/estatsd/lib
 
 rel/estatsd:
-	@./rebar generate
+	@rebar generate
 
 deploy: relclean rel
