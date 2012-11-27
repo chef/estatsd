@@ -17,6 +17,9 @@ compile: $(DEPS)
 compile_skip:
 	@$(REBAR) compile skip_deps=true
 
+test:
+	@$(REBAR) eunit skip_deps=true
+
 # For a release-only project, this won't make much sense, but could be
 # useful for release projects that have their own code
 clean:
@@ -91,4 +94,4 @@ unlocked_deps:
 lock_deps:
 	@rebar lock-deps skip_deps=true
 
-.PHONY: distclean prepare_release lock_deps unlocked_deps update clean compile compile_skip allclean tags relclean devrel rel relclean generate munge_apps
+.PHONY: distclean prepare_release lock_deps unlocked_deps update clean compile compile_skip allclean tags relclean devrel rel relclean generate munge_apps test
