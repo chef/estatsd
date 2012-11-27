@@ -100,10 +100,11 @@ recv_loop(S, Acc) ->
     end.
 
 init(Port) ->
-    error_logger:info_msg("capture_tcp listening on ~p~n", [Port]),
     {ok, LSocket} = gen_tcp:listen(Port, [binary, {active, true}, {packet, 0}]),
+    {ok, RealPort} = inet:port(LSocket),
+    error_logger:info_msg("capture_tcp listening on ~p~n", [RealPort]),
     spawn(fun() -> recv_server(LSocket) end),
-    {ok, #state{port = Port, socket = LSocket}}.
+    {ok, #state{port = RealPort, socket = LSocket}}.
 
 handle_call(peek, _From, #state{msg_count = Count, buffer = Buffer}=State) ->
     {reply, {Count, lists:reverse(Buffer)}, State};
