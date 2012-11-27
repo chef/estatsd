@@ -40,18 +40,26 @@ estatsd_sanity_test_() ->
                ok = gen_udp:send(S, "127.0.0.1", Port, <<"mycounter:10|c">>),
                ok = gen_udp:send(S, "127.0.0.1", Port, <<"mycounter:10|c">>),
                ok = gen_udp:send(S, "127.0.0.1", Port, <<"mycounter:5|d">>),
-               timer:sleep(3000),
-               {MsgCount, _Msgs} = capture_tcp:read(),
-               ?debugVal(_Msgs),
+               estatsd_server:force_flush(),
+               %% sadly, need sleep here because flush is async. The
+               %% work is done in an unsupervised spawned process.
+               timer:sleep(200),
+               {MsgCount, Msgs} = capture_tcp:read(),
                %% three UDP messages are sent, but these will be aggregated into
                %% a single message sent off to "graphite".
                ?assertEqual(1, MsgCount),
-               %% ?assert(lists:member(<<"mycounter">>, Metrics)),
-               %% MyCounter = folsom_metrics:get_metric_value(<<"mycounter">>),
-               %% ?debugVal(MyCounter),
-               ok
+               Keys = [ K || {K, _, _} <- process_graphite(hd(Msgs)) ],
+               ?assertEqual([<<"stats.mycounter">>, <<"stats_counts.mycounter">>, <<"statsd.numStats">>],
+                            Keys)
        end}]
      end}.
+
+process_graphite(Msg) ->
+    [ parse_graphite_line(X) || X <- re:split(Msg, "\n"), X =/= <<>> ].
+
+parse_graphite_line(Line) ->
+    [Key, Value, Time] = re:split(Line, " "),
+    {Key, Value, Time}.
 
 multi() ->
     Port = 3344,
