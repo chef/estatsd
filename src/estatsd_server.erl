@@ -15,8 +15,14 @@
 
 %-export([key2str/1,flush/0]). %% export for debugging 
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, 
-         terminate/2, code_change/3]).
+-export([
+         code_change/3,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         init/1,
+         terminate/2
+        ]).
 
 -record(state, {timers,             % gb_tree of timer data
                 flush_interval,     % ms interval between stats flushing
