@@ -1,4 +1,6 @@
-apps/estatsd/ebin/*
-deps
+ebin/*
+*.beam
+deps/*
 rel/estatsd
-.eunit
+
+

@@ -8,8 +8,12 @@ RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
 RUNNER_ETC_DIR=$RUNNER_BASE_DIR/etc
 RUNNER_LOG_DIR=$RUNNER_BASE_DIR/log
 # Note the trailing slash on $PIPE_DIR/
-PIPE_DIR=/tmp/$RUNNER_BASE_DIR/
+PIPE_DIR=$RUNNER_BASE_DIR/pipe_dir/
 RUNNER_USER=
+
+## Set the erlang log size
+export RUN_ERL_LOG_MAXSIZE=10000000
+export RUN_ERL_LOG_ALIVE_FORMAT=%d-%b-%Y::%H:%M:%S
 
 # Make sure this script is running as the appropriate user
 if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
@@ -53,20 +57,21 @@ NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
 # Check the first argument for instructions
 case "$1" in
     runit)
-        # Make sure there is not already a node running
-        RES=`$NODETOOL ping`
-        if [ "$RES" = "pong" ]; then
-            echo "Node is already running!"
-            exit 1
-        fi
-        HEART_COMMAND="$RUNNER_BASE_DIR/bin/$SCRIPT start"
-        export HEART_COMMAND
-        mkdir -p $PIPE_DIR
-        shift # remove $1
-        # no -daemon and no exec for use with runit
-        $ERTS_PATH/run_erl $PIPE_DIR $RUNNER_LOG_DIR "$RUNNER_BASE_DIR/bin/$SCRIPT console $@" 2>&1
-        ;;
+        BOOTFILE=$SCRIPT
+        # Setup beam-required vars
+        ROOTDIR=$RUNNER_BASE_DIR
+        BINDIR=$ROOTDIR/erts-$ERTS_VSN/bin
+        EMU=beam
+        PROGNAME=`echo $0 | sed 's/.*\\///'`
+        CMD="$BINDIR/erlexec -noshell -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -embedded -config $RUNNER_ETC_DIR/sys.config -args_file $RUNNER_ETC_DIR/vm.args -- ${1+"$@"}"
+        export EMU
+        export ROOTDIR
+        export BINDIR
+        export PROGNAME
 
+        # Start the VM
+        exec $CMD
+        ;;
     start)
         # Make sure there is not already a node running
         RES=`$NODETOOL ping`
@@ -78,7 +83,6 @@ case "$1" in
         export HEART_COMMAND
         mkdir -p $PIPE_DIR
         shift # remove $1
-        # no -daemon and no exec for use with runit
         $ERTS_PATH/run_erl -daemon $PIPE_DIR $RUNNER_LOG_DIR "exec $RUNNER_BASE_DIR/bin/$SCRIPT console $@" 2>&1
         ;;
 
@@ -146,7 +150,7 @@ case "$1" in
         BINDIR=$ROOTDIR/erts-$ERTS_VSN/bin
         EMU=beam
         PROGNAME=`echo $0 | sed 's/.*\\///'`
-        CMD="$BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -embedded -config $RUNNER_ETC_DIR/app.config -args_file $RUNNER_ETC_DIR/vm.args -- ${1+"$@"}"
+        CMD="$BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -embedded -config $RUNNER_ETC_DIR/sys.config -args_file $RUNNER_ETC_DIR/vm.args -- ${1+"$@"}"
         export EMU
         export ROOTDIR
         export BINDIR
