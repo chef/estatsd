@@ -10,7 +10,10 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/0]).
+-export([
+         start_link/0,
+         what_port/0
+        ]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -24,7 +27,10 @@
 %% ------------------------------------------------------------------
 
 start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+what_port() ->
+    gen_server:call(?MODULE, what_port).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -41,17 +47,20 @@ init([]) ->
     {ok, RecBuf} = application:get_env(estatsd, udp_recbuf),
     {ok, BatchMax} = application:get_env(estatsd, udp_max_batch_size),
     {ok, BatchAge} = application:get_env(estatsd, udp_max_batch_age),
-    error_logger:info_msg("estatsd will listen on UDP ~p with recbuf ~p~n",
-                          [Port, RecBuf]),
-    error_logger:info_msg("batch size ~p with max age of ~pms~n",
-                          [BatchMax, BatchAge]),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once},
                                        {recbuf, RecBuf}]),
-    {ok, #state{port = Port, socket = Socket,
+    {ok, RealPort} = inet:port(Socket),
+    error_logger:info_msg("estatsd will listen on UDP ~p with recbuf ~p~n",
+                          [RealPort, RecBuf]),
+    error_logger:info_msg("batch size ~p with max age of ~pms~n",
+                          [BatchMax, BatchAge]),
+    {ok, #state{port = RealPort, socket = Socket,
                 batch = [],
                 batch_max = BatchMax,
                 batch_max_age = BatchAge}}.
 
+handle_call(what_port, _From, #state{port = Port} = State) ->
+    {reply, {ok, Port}, State};
 handle_call(_Request, _From, State) ->
     {noreply, ok, State}.
 

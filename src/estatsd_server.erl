@@ -15,8 +15,15 @@
 
 %-export([key2str/1,flush/0]). %% export for debugging 
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, 
-         terminate/2, code_change/3]).
+-export([
+         code_change/3,
+         force_flush/0,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         init/1,
+         terminate/2
+        ]).
 
 -record(state, {timers,             % gb_tree of timer data
                 flush_interval,     % ms interval between stats flushing
@@ -28,6 +35,10 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%% @doc Only intended for testing and debugging use
+force_flush() ->
+    gen_server:call(?MODULE, flush).
+
 %%
 
 init([]) ->
@@ -38,7 +49,7 @@ init([]) ->
                           [ GraphiteHost, GraphitePort, FlushIntervalMs ]),
     ets:new(statsd, [named_table, set]),
     %% Flush out stats to graphite periodically
-    {ok, Tref} = timer:apply_interval(FlushIntervalMs, gen_server, cast, 
+    {ok, Tref} = timer:apply_interval(FlushIntervalMs, gen_server, call,
                                                        [?MODULE, flush]),
     State = #state{ timers          = gb_trees:empty(),
                     flush_interval  = FlushIntervalMs,
@@ -65,17 +76,17 @@ handle_cast({timing, Key, Duration}, State) ->
             {noreply, State#state{timers = gb_trees:insert(Key, [Duration], State#state.timers)}};
         {value, Val} ->
             {noreply, State#state{timers = gb_trees:update(Key, [Duration|Val], State#state.timers)}}
-    end;
+    end.
 
-handle_cast(flush, State) ->
+handle_call(flush, _From, State) ->
     All = ets:tab2list(statsd),
     spawn( fun() -> do_report(All, State) end ),
     %% WIPE ALL
     ets:delete_all_objects(statsd),
     NewState = State#state{timers = gb_trees:empty()},
-    {noreply, NewState}.
-
-handle_call(_,_,State)      -> {reply, ok, State}.
+    {reply, ok, NewState};
+handle_call(_,_,State) ->
+    {reply, ok, State}.
 
 handle_info(_Msg, State)    -> {noreply, State}.
 

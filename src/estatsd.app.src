@@ -5,8 +5,10 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  crypto,
+                  inets
                  ]},
-  {mod, { estatsd_app, []}},
+  {mod, {estatsd_app, []}},
   {env, []}
  ]}.
