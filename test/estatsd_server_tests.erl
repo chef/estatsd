@@ -49,8 +49,10 @@ estatsd_sanity_test_() ->
                %% a single message sent off to "graphite".
                ?assertEqual(1, MsgCount),
                Keys = [ K || {K, _, _} <- process_graphite(hd(Msgs)) ],
-               ?assertEqual([<<"stats.mycounter">>, <<"stats_counts.mycounter">>, <<"statsd.numStats">>],
-                            Keys)
+               %% not putting stats_counts metric now
+               %?assertEqual([<<"stats.mycounter">>, <<"stats_counts.mycounter">>, <<"statsd.numStats">>],
+               %             Keys)
+               ?assertEqual([<<"stats.mycounter">>, <<"statsd.numStats">>], Keys)
        end}]
      end}.
 

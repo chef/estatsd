@@ -148,19 +148,21 @@ do_report(All, State) ->
             send_to_graphite(FinalMsg, State)
     end.
 
-do_report_counters(All, TsStr, State) ->
+do_report_counters(All, TsStr, _State) ->
     Msg = lists:foldl(
-                fun({Key, {Val0,NumVals}}, Acc) ->
+                fun({Key, {Val0,_NumVals}}, Acc) ->
                         KeyS = key2str(Key),
-                        Val = Val0 / (State#state.flush_interval/1000),
+                        %% Why divide value by time? It's a counter. I want accurate counts.
+                        %Val = Val0 / (State#state.flush_interval/1000),
+                        Val = Val0,
                         %% Build stats string for graphite
                         Fragment = [ "stats.", KeyS, " ", 
                                      io_lib:format("~w", [Val]), " ", 
-                                     TsStr, "\n",
-
-                                     "stats_counts.", KeyS, " ", 
-                                     io_lib:format("~w",[NumVals]), " ", 
                                      TsStr, "\n"
+                                     %% Counters do not need this extra metric.
+                                     %"stats_counts.", KeyS, " ",
+                                     %io_lib:format("~w",[NumVals]), " ",
+                                     %TsStr, "\n"
                                    ],
                         [ Fragment | Acc ]                    
                 end, [], All),
