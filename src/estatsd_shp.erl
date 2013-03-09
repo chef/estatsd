@@ -10,14 +10,13 @@
 
 -include("estatsd.hrl").
 
--spec parse_packet(binary()) ->
-        {bad_version, binary()}
-        | {bad_length, {integer(), binary()}}
-        | {?SHP_VERSION, non_neg_integer(),
-           [#shp_metric{}|{bad_metric, term()}]}.
 
 % @doc Parse a binary in Stats Hero Protocol Version 1
 %
+-spec parse_packet(binary()) ->
+        {bad_version, binary()}
+        | {bad_length, {[any()] | integer(), binary()}}
+        | [#shp_metric{}].
 parse_packet(<<"1|", Rest/binary>>) ->
     parse_packet(Rest, []);
 parse_packet(Packet) when is_binary(Packet) ->
@@ -76,8 +75,7 @@ parse_metric(Bin) ->
             {bad_metric, {parse_error, Bin}}
     end.
 
--spec parse_type(binary()) -> atom().
-
+-spec parse_type(<<_:8, _:_*8>>) -> 'g' | 'h' | 'm' | 'mr'.
 parse_type(<<"m">>) ->
     m;
 parse_type(<<"h">>) ->

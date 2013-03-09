@@ -9,10 +9,13 @@ else
 endif
 REBAR = rebar -C $(rebar_config)
 
-all: compile
+all: compile test dialyzer
 
 compile: $(DEPS)
 	@$(REBAR) compile
+
+dialyzer:
+	dialyzer -Wunderspecs -r ebin
 
 compile_skip:
 	@$(REBAR) compile skip_deps=true
