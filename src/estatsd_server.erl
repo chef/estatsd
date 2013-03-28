@@ -33,7 +33,8 @@
                 graphite_host,      % graphite server host
                 graphite_port,      % graphite server port
                 opentsdb_host,      % opentsdb server host
-                opentsdb_port       % opentsdb server port
+                opentsdb_port,      % opentsdb server port
+                hostname
                }).
 
 start_link() ->
@@ -63,7 +64,8 @@ init([]) ->
                     graphite_host   = GraphiteHost,
                     graphite_port   = GraphitePort,
                     opentsdb_host   = OpenTSDBHost,
-                    opentsdb_port   = OpenTSDBPort
+                    opentsdb_port   = OpenTSDBPort,
+                    hostname        = net_adm:localhost()
                   },
     {ok, State}.
 
@@ -237,24 +239,26 @@ do_report_for_opentsdb(All, State) ->
             send_to_opentsdb(FinalMsg, State)
     end.
 
-do_report_counters_for_opentsdb(All, TsStr, State) ->
+do_report_counters_for_opentsdb(All, TsStr, #state{hostname=Host}=State) ->
+    Suffix = [" host=", Host,"\n"],
     Msg = lists:foldl(
                 fun({Key, {Val0,NumVals}}, Acc) ->
                         KeyS = key2str(Key),
                         Val = Val0 / (State#state.flush_interval/1000),
                         %% Build stats string for graphite
                         Fragment = [ "put stats.", KeyS, " ", TsStr, " ",
-                                     io_lib:format("~w", [Val]), " host=unknown\n",
+                                     io_lib:format("~w", [Val]), Suffix,
                                      "put stats_counts.", KeyS, " ", TsStr, " ",
-                                     io_lib:format("~w",[NumVals]), " host=unknown\n"
+                                     io_lib:format("~w",[NumVals]), Suffix
                                    ],
                         [ Fragment | Acc ]
                 end, [], All),
     ?debugFmt("~p",[Msg]),
     {Msg, length(All)}.
 
-do_report_timers_for_opentsdb(TsStr, State) ->
+do_report_timers_for_opentsdb(TsStr, #state{hostname=Host}=State) ->
     Timings = gb_trees:to_list(State#state.timers),
+    Suffix = [" host=", Host,"\n"],
     Msg = lists:foldl(
         fun({Key, Vals}, Acc) ->
                 KeyS = key2str(Key),
@@ -271,7 +275,7 @@ do_report_timers_for_opentsdb(TsStr, State) ->
                 %% Build stats string for graphite
                 Startl          = [ "put stats.timers.", KeyS, "." ],
                 Midl            = [" ", TsStr, " "],
-                Fragment        = [ [Startl, Name, Midl, num2str(Val), " host=unknown\n"] || {Name,Val} <-
+                Fragment        = [ [Startl, Name, Midl, num2str(Val), Suffix] || {Name,Val} <-
                                   [ {"mean", Mean},
                                     {"upper", Max},
                                     {"upper_"++num2str(PctThreshold), MaxAtThreshold},
