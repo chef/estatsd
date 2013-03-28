@@ -11,6 +11,8 @@
 -module(estatsd_server).
 -behaviour(gen_server).
 
+-include_lib("eunit/include/eunit.hrl").
+
 -export([start_link/0]).
 
 %-export([key2str/1,flush/0]). %% export for debugging
@@ -29,7 +31,9 @@
                 flush_interval,     % ms interval between stats flushing
                 flush_timer,        % TRef of interval timer
                 graphite_host,      % graphite server host
-                graphite_port       % graphite server port
+                graphite_port,      % graphite server port
+                opentsdb_host,      % opentsdb server host
+                opentsdb_port       % opentsdb server port
                }).
 
 start_link() ->
@@ -45,6 +49,8 @@ init([]) ->
     {ok, FlushIntervalMs} = application:get_env(estatsd, flush_interval),
     {ok, GraphiteHost} = application:get_env(estatsd, graphite_host),
     {ok, GraphitePort} = application:get_env(estatsd, graphite_port),
+    {ok, OpenTSDBHost} = application:get_env(estatsd, opentsdb_host),
+    {ok, OpenTSDBPort} = application:get_env(estatsd, opentsdb_port),
     error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n",
                           [ GraphiteHost, GraphitePort, FlushIntervalMs ]),
     ets:new(statsd, [named_table, set]),
@@ -55,7 +61,9 @@ init([]) ->
                     flush_interval  = FlushIntervalMs,
                     flush_timer     = Tref,
                     graphite_host   = GraphiteHost,
-                    graphite_port   = GraphitePort
+                    graphite_port   = GraphitePort,
+                    opentsdb_host   = OpenTSDBHost,
+                    opentsdb_port   = OpenTSDBPort
                   },
     {ok, State}.
 
@@ -80,7 +88,8 @@ handle_cast({timing, Key, Duration}, State) ->
 
 handle_call(flush, _From, State) ->
     All = ets:tab2list(statsd),
-    spawn( fun() -> do_report(All, State) end ),
+    spawn( fun() -> do_report_for_graphite(All, State) end ),
+    spawn( fun() -> do_report_for_opentsdb(All, State) end ),
     %% WIPE ALL
     ets:delete_all_objects(statsd),
     NewState = State#state{timers = gb_trees:empty()},
@@ -131,11 +140,11 @@ num2str(NN) -> lists:flatten(io_lib:format("~w",[NN])).
 unixtime()  -> {Meg,S,_Mic} = erlang:now(), Meg*1000000 + S.
 
 %% Aggregate the stats and generate a report to send to graphite
-do_report(All, State) ->
+do_report_for_graphite(All, State) ->
     % One time stamp string used in all stats lines:
     TsStr = num2str(unixtime()),
-    {MsgCounters, NumCounters} = do_report_counters(All, TsStr, State),
-    {MsgTimers,   NumTimers}   = do_report_timers(TsStr, State),
+    {MsgCounters, NumCounters} = do_report_counters_for_graphite(All, TsStr, State),
+    {MsgTimers,   NumTimers}   = do_report_timers_for_graphite(TsStr, State),
     %% REPORT TO GRAPHITE
     case NumTimers + NumCounters of
         0 -> nothing_to_report;
@@ -148,7 +157,7 @@ do_report(All, State) ->
             send_to_graphite(FinalMsg, State)
     end.
 
-do_report_counters(All, TsStr, State) ->
+do_report_counters_for_graphite(All, TsStr, State) ->
     Msg = lists:foldl(
                 fun({Key, {Val0,NumVals}}, Acc) ->
                         KeyS = key2str(Key),
@@ -166,7 +175,7 @@ do_report_counters(All, TsStr, State) ->
                 end, [], All),
     {Msg, length(All)}.
 
-do_report_timers(TsStr, State) ->
+do_report_timers_for_graphite(TsStr, State) ->
     Timings = gb_trees:to_list(State#state.timers),
     Msg = lists:foldl(
         fun({Key, Vals}, Acc) ->
@@ -193,4 +202,83 @@ do_report_timers(TsStr, State) ->
                                   ]],
                 [ Fragment | Acc ]
         end, [], Timings),
+    {Msg, length(Msg)}.
+
+
+send_to_opentsdb(Msg, State) ->
+    error_logger:info_msg("sending data to opentsdb~n"),
+    % io:format("SENDING: ~s\n", [Msg]),
+    case gen_tcp:connect(State#state.opentsdb_host,
+                         State#state.opentsdb_port,
+                         [list, {packet, 0}]) of
+        {ok, Sock} ->
+            gen_tcp:send(Sock, Msg),
+            gen_tcp:close(Sock),
+            ok;
+        E ->
+            error_logger:error_msg("Failed to connect to opentsdb: ~p", [E]),
+            E
+    end.
+
+do_report_for_opentsdb(All, State) ->
+    % One time stamp string used in all stats lines:
+    TsStr = num2str(unixtime()),
+    {MsgCounters, NumCounters} = do_report_counters_for_opentsdb(All, TsStr, State),
+    {MsgTimers,   NumTimers}   = do_report_timers_for_opentsdb(TsStr, State),
+    %% REPORT TO GRAPHITE
+    case NumTimers + NumCounters of
+        0 -> nothing_to_report;
+        NumStats ->
+            FinalMsg = [ MsgCounters,
+                         MsgTimers,
+                         %% Also graph the number of graphs we're graphing:
+                         "put statsd.numStats ", TsStr, " ", num2str(NumStats), " host=unknown\n"
+                       ],
+            send_to_opentsdb(FinalMsg, State)
+    end.
+
+do_report_counters_for_opentsdb(All, TsStr, State) ->
+    Msg = lists:foldl(
+                fun({Key, {Val0,NumVals}}, Acc) ->
+                        KeyS = key2str(Key),
+                        Val = Val0 / (State#state.flush_interval/1000),
+                        %% Build stats string for graphite
+                        Fragment = [ "put stats.", KeyS, " ", TsStr, " ",
+                                     io_lib:format("~w", [Val]), " host=unknown\n",
+                                     "put stats_counts.", KeyS, " ", TsStr, " ",
+                                     io_lib:format("~w",[NumVals]), " host=unknown\n"
+                                   ],
+                        [ Fragment | Acc ]
+                end, [], All),
+    ?debugFmt("~p",[Msg]),
+    {Msg, length(All)}.
+
+do_report_timers_for_opentsdb(TsStr, State) ->
+    Timings = gb_trees:to_list(State#state.timers),
+    Msg = lists:foldl(
+        fun({Key, Vals}, Acc) ->
+                KeyS = key2str(Key),
+                Values          = lists:sort(Vals),
+                Count           = length(Values),
+                Min             = hd(Values),
+                Max             = lists:last(Values),
+                PctThreshold    = 90,
+                ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
+                NumInThreshold  = Count - ThresholdIndex,
+                Values1         = lists:sublist(Values, NumInThreshold),
+                MaxAtThreshold  = lists:nth(NumInThreshold, Values),
+                Mean            = lists:sum(Values1) / NumInThreshold,
+                %% Build stats string for graphite
+                Startl          = [ "put stats.timers.", KeyS, "." ],
+                Midl            = [" ", TsStr, " "],
+                Fragment        = [ [Startl, Name, Midl, num2str(Val), " host=unknown\n"] || {Name,Val} <-
+                                  [ {"mean", Mean},
+                                    {"upper", Max},
+                                    {"upper_"++num2str(PctThreshold), MaxAtThreshold},
+                                    {"lower", Min},
+                                    {"count", Count}
+                                  ]],
+                [ Fragment | Acc ]
+        end, [], Timings),
+    ?debugFmt("~p",[Msg]),
     {Msg, length(Msg)}.
