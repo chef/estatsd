@@ -176,15 +176,13 @@ do_report_timers(TsStr, State) ->
                 Stats = bear:get_statistics(Vals),
 
                 KeyS = key2str(Key),
-                Values          = lists:sort(Vals),
+
                 Count           = proplists:get_value(n, Stats),
                 Min             = proplists:get_value(min, Stats),
                 Max             = proplists:get_value(max, Stats),
-                PctThreshold    = 90,
-                ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
-                NumInThreshold  = Count - ThresholdIndex,
-                MaxAtThreshold  = lists:nth(NumInThreshold, Values),
 
+                Percentiles = proplists:get_value(percentile, Stats),
+                Perc90 = proplists:get_value(90, Percentiles),
                 Mean = proplists:get_value(arithmetic_mean, Stats),
 
                 %% Build stats string for graphite
@@ -193,7 +191,7 @@ do_report_timers(TsStr, State) ->
                 Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] || {Name,Val} <-
                                   [ {"mean", Mean},
                                     {"upper", Max},
-                                    {"upper_"++num2str(PctThreshold), MaxAtThreshold},
+                                    {"upper_90", Perc90},
                                     {"lower", Min},
                                     {"count", Count}
                                   ]],
