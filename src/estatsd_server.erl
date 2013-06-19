@@ -170,6 +170,11 @@ do_report_timers(TsStr, State) ->
     Timings = gb_trees:to_list(State#state.timers),
     Msg = lists:foldl(
         fun({Key, Vals}, Acc) ->
+
+                %% Note that if there are fewer than 5 values, all stats will be zero
+                %% https://github.com/boundary/bear/blob/master/src/bear.erl#L37
+                Stats = bear:get_statistics(Vals),
+
                 KeyS = key2str(Key),
                 Values          = lists:sort(Vals),
                 Count           = length(Values),
@@ -178,9 +183,10 @@ do_report_timers(TsStr, State) ->
                 PctThreshold    = 90,
                 ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
                 NumInThreshold  = Count - ThresholdIndex,
-                Values1         = lists:sublist(Values, NumInThreshold),
                 MaxAtThreshold  = lists:nth(NumInThreshold, Values),
-                Mean            = lists:sum(Values1) / NumInThreshold,
+
+                Mean = proplists:get_value(arithmetic_mean, Stats),
+
                 %% Build stats string for graphite
                 Startl          = [ "stats.timers.", KeyS, "." ],
                 Endl            = [" ", TsStr, "\n"],
