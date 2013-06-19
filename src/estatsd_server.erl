@@ -177,7 +177,7 @@ do_report_timers(TsStr, State) ->
 
                 KeyS = key2str(Key),
                 Values          = lists:sort(Vals),
-                Count           = length(Values),
+                Count           = proplists:get_value(n, Stats),
                 Min             = proplists:get_value(min, Stats),
                 Max             = proplists:get_value(max, Stats),
                 PctThreshold    = 90,
