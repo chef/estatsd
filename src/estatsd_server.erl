@@ -178,7 +178,7 @@ do_report_timers(TsStr, State) ->
                 KeyS = key2str(Key),
                 Values          = lists:sort(Vals),
                 Count           = length(Values),
-                Min             = hd(Values),
+                Min             = proplists:get_value(min, Stats),
                 Max             = lists:last(Values),
                 PctThreshold    = 90,
                 ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
