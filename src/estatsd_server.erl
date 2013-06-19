@@ -173,12 +173,11 @@ do_report_timers(TsStr, State) ->
                 %% Note that if there are fewer than 5 values, all stats will be zero
                 %% https://github.com/boundary/bear/blob/master/src/bear.erl#L37
                 Stats = bear:get_statistics(Values),
-                Percentiles = proplists:get_value(percentile, Stats),
 
                 Count  = proplists:get_value(n, Stats),
                 Min    = proplists:get_value(min, Stats),
                 Max    = proplists:get_value(max, Stats),
-                Perc90 = proplists:get_value(90, Percentiles),
+                Perc90 = percentile(90, Stats),
                 Mean   = proplists:get_value(arithmetic_mean, Stats),
 
                 %% Build stats string for graphite
@@ -195,3 +194,9 @@ do_report_timers(TsStr, State) ->
                 [ Fragment | Acc ]
         end, [], Timings),
     {Msg, length(Msg)}.
+
+%% @doc Helper function to extract a percentile measurement from a
+%% bear-generated proplist of statistics.
+percentile(Percentile, Stats) ->
+    Percentiles = proplists:get_value(percentile, Stats),
+    proplists:get_value(Percentile, Percentiles).
