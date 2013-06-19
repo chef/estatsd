@@ -169,23 +169,20 @@ do_report_counters(All, TsStr, State) ->
 do_report_timers(TsStr, State) ->
     Timings = gb_trees:to_list(State#state.timers),
     Msg = lists:foldl(
-        fun({Key, Vals}, Acc) ->
-
+        fun({Key, Values}, Acc) ->
                 %% Note that if there are fewer than 5 values, all stats will be zero
                 %% https://github.com/boundary/bear/blob/master/src/bear.erl#L37
-                Stats = bear:get_statistics(Vals),
-
-                KeyS = key2str(Key),
-
-                Count           = proplists:get_value(n, Stats),
-                Min             = proplists:get_value(min, Stats),
-                Max             = proplists:get_value(max, Stats),
-
+                Stats = bear:get_statistics(Values),
                 Percentiles = proplists:get_value(percentile, Stats),
+
+                Count  = proplists:get_value(n, Stats),
+                Min    = proplists:get_value(min, Stats),
+                Max    = proplists:get_value(max, Stats),
                 Perc90 = proplists:get_value(90, Percentiles),
-                Mean = proplists:get_value(arithmetic_mean, Stats),
+                Mean   = proplists:get_value(arithmetic_mean, Stats),
 
                 %% Build stats string for graphite
+                KeyS            = key2str(Key),
                 Startl          = [ "stats.timers.", KeyS, "." ],
                 Endl            = [" ", TsStr, "\n"],
                 Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] || {Name,Val} <-
