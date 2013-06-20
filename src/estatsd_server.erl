@@ -201,7 +201,7 @@ reported_metrics(Stats) ->
     %% https://github.com/boundary/bear/blob/master/src/bear.erl
     %%
     %% Currently, this is 50, 75, 90, 95, 99, and 999
-    PercentilesToReport = [90],
+    PercentilesToReport = [90, 95, 99],
 
     %% Extract all the percentiles, creating appropriate metric names.
     %% 90th percentile label => "upper_90", 95th percentile =>
