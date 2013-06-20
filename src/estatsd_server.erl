@@ -174,26 +174,42 @@ do_report_timers(TsStr, State) ->
                 %% https://github.com/boundary/bear/blob/master/src/bear.erl#L37
                 Stats = bear:get_statistics(Values),
 
-                Count  = proplists:get_value(n, Stats),
-                Min    = proplists:get_value(min, Stats),
-                Max    = proplists:get_value(max, Stats),
-                Perc90 = percentile(90, Stats),
-                Mean   = proplists:get_value(arithmetic_mean, Stats),
-
                 %% Build stats string for graphite
                 KeyS            = key2str(Key),
                 Startl          = [ "stats.timers.", KeyS, "." ],
                 Endl            = [" ", TsStr, "\n"],
-                Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] || {Name,Val} <-
-                                  [ {"mean", Mean},
-                                    {"upper", Max},
-                                    {"upper_90", Perc90},
-                                    {"lower", Min},
-                                    {"count", Count}
-                                  ]],
+                Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] ||
+                                      {Name,Val} <- reported_metrics(Stats)
+                                  ],
                 [ Fragment | Acc ]
         end, [], Timings),
     {Msg, length(Msg)}.
+
+
+%% @doc Extract all the statistics we care about from a bear-computed
+%% set of stats.  Generates a list of label/value pairs.
+%%
+%% See bear:get_statistics/1.
+reported_metrics(Stats) ->
+    %% Standard stuff here
+    BaseMetrics = [{"mean", proplists:get_value(arithmetic_mean, Stats)},
+                   {"upper", proplists:get_value(max, Stats)},
+                   {"lower", proplists:get_value(min, Stats)},
+                   {"count", proplists:get_value(n, Stats)}],
+
+    %% These need to be percentiles that bear computes already.
+    %% https://github.com/boundary/bear/blob/master/src/bear.erl
+    %%
+    %% Currently, this is 50, 75, 90, 95, 99, and 999
+    PercentilesToReport = [90],
+
+    %% Extract all the percentiles, creating appropriate metric names.
+    %% 90th percentile label => "upper_90", 95th percentile =>
+    %% "upper_95", etc.
+    Percentiles = [{"upper_"++num2str(Percentile),
+                    percentile(Percentile, Stats)} || Percentile <- PercentilesToReport],
+
+    BaseMetrics ++ Percentiles.
 
 %% @doc Helper function to extract a percentile measurement from a
 %% bear-generated proplist of statistics.
