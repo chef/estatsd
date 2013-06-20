@@ -13,7 +13,7 @@
 
 -export([start_link/0]).
 
-%-export([key2str/1,flush/0]). %% export for debugging 
+%-export([key2str/1,flush/0]). %% export for debugging
 
 -export([
          code_change/3,
@@ -45,7 +45,7 @@ init([]) ->
     {ok, FlushIntervalMs} = application:get_env(estatsd, flush_interval),
     {ok, GraphiteHost} = application:get_env(estatsd, graphite_host),
     {ok, GraphitePort} = application:get_env(estatsd, graphite_port),
-    error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n", 
+    error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n",
                           [ GraphiteHost, GraphitePort, FlushIntervalMs ]),
     ets:new(statsd, [named_table, set]),
     %% Flush out stats to graphite periodically
@@ -112,9 +112,9 @@ send_to_graphite(Msg, State) ->
     end.
 
 % this string munging is damn ugly compared to javascript :(
-key2str(K) when is_atom(K) -> 
+key2str(K) when is_atom(K) ->
     atom_to_list(K);
-key2str(K) when is_binary(K) -> 
+key2str(K) when is_binary(K) ->
     key2str(binary_to_list(K));
 key2str(K) when is_list(K) ->
     {ok, R1} = re:compile("\\s+"),
@@ -154,43 +154,65 @@ do_report_counters(All, TsStr, State) ->
                         KeyS = key2str(Key),
                         Val = Val0 / (State#state.flush_interval/1000),
                         %% Build stats string for graphite
-                        Fragment = [ "stats.", KeyS, " ", 
-                                     io_lib:format("~w", [Val]), " ", 
+                        Fragment = [ "stats.", KeyS, " ",
+                                     io_lib:format("~w", [Val]), " ",
                                      TsStr, "\n",
 
-                                     "stats_counts.", KeyS, " ", 
-                                     io_lib:format("~w",[NumVals]), " ", 
+                                     "stats_counts.", KeyS, " ",
+                                     io_lib:format("~w",[NumVals]), " ",
                                      TsStr, "\n"
                                    ],
-                        [ Fragment | Acc ]                    
+                        [ Fragment | Acc ]
                 end, [], All),
     {Msg, length(All)}.
 
 do_report_timers(TsStr, State) ->
     Timings = gb_trees:to_list(State#state.timers),
     Msg = lists:foldl(
-        fun({Key, Vals}, Acc) ->
-                KeyS = key2str(Key),
-                Values          = lists:sort(Vals),
-                Count           = length(Values),
-                Min             = hd(Values),
-                Max             = lists:last(Values),
-                PctThreshold    = 90,
-                ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
-                NumInThreshold  = Count - ThresholdIndex,
-                Values1         = lists:sublist(Values, NumInThreshold),
-                MaxAtThreshold  = lists:nth(NumInThreshold, Values),
-                Mean            = lists:sum(Values1) / NumInThreshold,
+        fun({Key, Values}, Acc) ->
+                %% Note that if there are fewer than 5 values, all stats will be zero
+                %% https://github.com/boundary/bear/blob/master/src/bear.erl#L37
+                Stats = bear:get_statistics(Values),
+
                 %% Build stats string for graphite
+                KeyS            = key2str(Key),
                 Startl          = [ "stats.timers.", KeyS, "." ],
                 Endl            = [" ", TsStr, "\n"],
-                Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] || {Name,Val} <-
-                                  [ {"mean", Mean},
-                                    {"upper", Max},
-                                    {"upper_"++num2str(PctThreshold), MaxAtThreshold},
-                                    {"lower", Min},
-                                    {"count", Count}
-                                  ]],
+                Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] ||
+                                      {Name,Val} <- reported_metrics(Stats)
+                                  ],
                 [ Fragment | Acc ]
         end, [], Timings),
     {Msg, length(Msg)}.
+
+
+%% @doc Extract all the statistics we care about from a bear-computed
+%% set of stats.  Generates a list of label/value pairs.
+%%
+%% See bear:get_statistics/1.
+reported_metrics(Stats) ->
+    %% Standard stuff here
+    BaseMetrics = [{"mean", proplists:get_value(arithmetic_mean, Stats)},
+                   {"upper", proplists:get_value(max, Stats)},
+                   {"lower", proplists:get_value(min, Stats)},
+                   {"count", proplists:get_value(n, Stats)}],
+
+    %% These need to be percentiles that bear computes already.
+    %% https://github.com/boundary/bear/blob/master/src/bear.erl
+    %%
+    %% Currently, this is 50, 75, 90, 95, 99, and 999
+    PercentilesToReport = [90, 95, 99],
+
+    %% Extract all the percentiles, creating appropriate metric names.
+    %% 90th percentile label => "upper_90", 95th percentile =>
+    %% "upper_95", etc.
+    Percentiles = [{"upper_"++num2str(Percentile),
+                    percentile(Percentile, Stats)} || Percentile <- PercentilesToReport],
+
+    BaseMetrics ++ Percentiles.
+
+%% @doc Helper function to extract a percentile measurement from a
+%% bear-generated proplist of statistics.
+percentile(Percentile, Stats) ->
+    Percentiles = proplists:get_value(percentile, Stats),
+    proplists:get_value(Percentile, Percentiles).
