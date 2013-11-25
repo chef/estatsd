@@ -193,6 +193,7 @@ do_report_timers(TsStr, State) ->
 reported_metrics(Stats) ->
     %% Standard stuff here
     BaseMetrics = [{"mean", proplists:get_value(arithmetic_mean, Stats)},
+                   {"median", proplists:get_value(median, Stats)},
                    {"upper", proplists:get_value(max, Stats)},
                    {"lower", proplists:get_value(min, Stats)},
                    {"count", proplists:get_value(n, Stats)}],
@@ -201,7 +202,7 @@ reported_metrics(Stats) ->
     %% https://github.com/boundary/bear/blob/master/src/bear.erl
     %%
     %% Currently, this is 50, 75, 90, 95, 99, and 999
-    PercentilesToReport = [50, 90, 95, 99],
+    PercentilesToReport = [90, 95, 99],
 
     %% Extract all the percentiles, creating appropriate metric names.
     %% 90th percentile label => "upper_90", 95th percentile =>
