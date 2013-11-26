@@ -13,7 +13,7 @@
 
 -export([start_link/0]).
 
-%-export([key2str/1,flush/0]). %% export for debugging 
+%-export([key2str/1,flush/0]). %% export for debugging
 
 -export([
          code_change/3,
@@ -45,7 +45,7 @@ init([]) ->
     {ok, FlushIntervalMs} = application:get_env(estatsd, flush_interval),
     {ok, GraphiteHost} = application:get_env(estatsd, graphite_host),
     {ok, GraphitePort} = application:get_env(estatsd, graphite_port),
-    error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n", 
+    error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n",
                           [ GraphiteHost, GraphitePort, FlushIntervalMs ]),
     ets:new(statsd, [named_table, set]),
     %% Flush out stats to graphite periodically
@@ -112,9 +112,9 @@ send_to_graphite(Msg, State) ->
     end.
 
 % this string munging is damn ugly compared to javascript :(
-key2str(K) when is_atom(K) -> 
+key2str(K) when is_atom(K) ->
     atom_to_list(K);
-key2str(K) when is_binary(K) -> 
+key2str(K) when is_binary(K) ->
     key2str(binary_to_list(K));
 key2str(K) when is_list(K) ->
     {ok, R1} = re:compile("\\s+"),
@@ -154,15 +154,15 @@ do_report_counters(All, TsStr, State) ->
                         KeyS = key2str(Key),
                         Val = Val0 / (State#state.flush_interval/1000),
                         %% Build stats string for graphite
-                        Fragment = [ "stats.", KeyS, " ", 
-                                     io_lib:format("~w", [Val]), " ", 
+                        Fragment = [ "stats.", KeyS, " ",
+                                     io_lib:format("~w", [Val]), " ",
                                      TsStr, "\n",
 
-                                     "stats_counts.", KeyS, " ", 
-                                     io_lib:format("~w",[NumVals]), " ", 
+                                     "stats_counts.", KeyS, " ",
+                                     io_lib:format("~w",[NumVals]), " ",
                                      TsStr, "\n"
                                    ],
-                        [ Fragment | Acc ]                    
+                        [ Fragment | Acc ]
                 end, [], All),
     {Msg, length(All)}.
 
@@ -175,6 +175,8 @@ do_report_timers(TsStr, State) ->
                 Count           = length(Values),
                 Min             = hd(Values),
                 Max             = lists:last(Values),
+                MedianIndex     = erlang:round(0.50*Count),
+                Median          = lists:nth(MedianIndex, Values),
                 PctThreshold    = 90,
                 ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
                 NumInThreshold  = Count - ThresholdIndex,
@@ -186,6 +188,7 @@ do_report_timers(TsStr, State) ->
                 Endl            = [" ", TsStr, "\n"],
                 Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] || {Name,Val} <-
                                   [ {"mean", Mean},
+                                    {"median", Median},
                                     {"upper", Max},
                                     {"upper_"++num2str(PctThreshold), MaxAtThreshold},
                                     {"lower", Min},
