@@ -1,6 +1,9 @@
 %% THIS FILE IS GENERATED. DO NOT EDIT IT MANUALLY %%
 
-{deps,[{eper,".*",
+{deps,[{bear,".*",
+             {git,"git://github.com/boundary/bear.git",
+                  "3fd09d1b7bbd9de5b2d29f46df04a93fca9ce85e"}},
+       {eper,".*",
              {git,"git://github.com/massemanet/eper.git",
                   "8cf87a6088f3a6e779075777578191556c551850"}},
        {rebar_lock_deps_plugin,".*",
