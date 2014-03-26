@@ -11,11 +11,12 @@ QUICK DEMO
 
 1) Install and configure graphite (quick-ish)
 2) Install rebar, have it in your path
-3) rebar compile
-4) erl -pa ebin
-5) > application:start(estatsd).
+3) rebar get-deps
+4) rebar compile
+5) erl -pa ebin
+6) > application:start(estatsd).
    > estatsd:increment(foo, 123).
-6) Observe graphite now has 1 data point.
+7) Observe graphite now has 1 data point.
 
 USAGE
 =====
